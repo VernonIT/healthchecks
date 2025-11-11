@@ -295,9 +295,12 @@ test_vnet_configuration() {
         add_check_result "Network Isolation" "Subnet Configuration" \
             "Info" "ASE subnet: $address_prefix"
 
-        # Check for NSG
+        # Check for NSG (ensure networkSecurityGroup is an object)
         local nsg_id
-        nsg_id=$(echo "$subnet_json" | jq -r '.networkSecurityGroup.id // ""')
+        nsg_id=""
+        if echo "$subnet_json" | jq -e '.networkSecurityGroup | type == "object"' >/dev/null 2>&1; then
+            nsg_id=$(echo "$subnet_json" | jq -r '.networkSecurityGroup.id // ""')
+        fi
 
         if [[ -n "$nsg_id" ]]; then
             local nsg_name
@@ -599,28 +602,38 @@ test_monitoring() {
     local diag_settings
     diag_settings=$(az monitor diagnostic-settings list \
         --resource "$ASE_ID" \
-        2>/dev/null || echo "[]")
-    
+        2>/dev/null || echo "{}")
+
+    # Ensure .value is an array before indexing
     local diag_count
-    diag_count=$(echo "$diag_settings" | jq '.value | length')
-    
+    diag_count=0
+    if echo "$diag_settings" | jq -e '.value | type == "array"' >/dev/null 2>&1; then
+        diag_count=$(echo "$diag_settings" | jq '.value | length')
+    fi
+
     if [[ "$diag_count" -gt 0 ]]; then
         add_check_result "Monitoring" "Diagnostic Settings" \
             "Pass" "Diagnostic logging configured: $diag_count setting(s)"
-        
+
         # Check for Log Analytics
         local la_count
-        la_count=$(echo "$diag_settings" | jq '[.value[] | select(.workspaceId != null)] | length')
-        
+        la_count=0
+        if echo "$diag_settings" | jq -e '.value | type == "array"' >/dev/null 2>&1; then
+            la_count=$(echo "$diag_settings" | jq '[.value[] | select(.workspaceId != null)] | length')
+        fi
+
         if [[ "$la_count" -gt 0 ]]; then
             add_check_result "Monitoring" "Log Analytics Integration" \
                 "Pass" "Logs sent to Log Analytics workspace"
         fi
-        
+
         # Check for Storage Account
         local sa_count
-        sa_count=$(echo "$diag_settings" | jq '[.value[] | select(.storageAccountId != null)] | length')
-        
+        sa_count=0
+        if echo "$diag_settings" | jq -e '.value | type == "array"' >/dev/null 2>&1; then
+            sa_count=$(echo "$diag_settings" | jq '[.value[] | select(.storageAccountId != null)] | length')
+        fi
+
         if [[ "$sa_count" -gt 0 ]]; then
             add_check_result "Monitoring" "Storage Account Archival" \
                 "Pass" "Logs archived to Storage Account"
