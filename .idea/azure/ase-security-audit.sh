@@ -349,10 +349,10 @@ test_nsg_rules() {
 test_web_apps() {
     print_header "=== Web App Security Checks ==="
     
-    # Get all App Service Plans in the ASE
+    # Get all App Service Plans in the ASE across ALL resource groups in subscription
+    print_info "Searching for App Service Plans across all resource groups..."
     local plans_json
     plans_json=$(az appservice plan list \
-        --resource-group "$RESOURCE_GROUP" \
         --query "[?hostingEnvironmentProfile.id=='$ASE_ID']" \
         2>/dev/null || echo "[]")
     
@@ -365,6 +365,8 @@ test_web_apps() {
         return
     fi
     
+    print_info "Found $plans_count App Service Plan(s) in ASE"
+    
     # Iterate through plans and get web apps
     local plan_ids
     plan_ids=$(echo "$plans_json" | jq -r '.[].id')
@@ -372,26 +374,37 @@ test_web_apps() {
     while IFS= read -r plan_id; do
         [[ -z "$plan_id" ]] && continue
         
+        # Get web apps for this plan (searches all resource groups)
         local apps_json
         apps_json=$(az webapp list --query "[?serverFarmId=='$plan_id']" 2>/dev/null || echo "[]")
         
-        local app_names
-        app_names=$(echo "$apps_json" | jq -r '.[].name')
+        local apps_count
+        apps_count=$(echo "$apps_json" | jq 'length')
         
-        while IFS= read -r app_name; do
-            [[ -z "$app_name" ]] && continue
-            test_web_app_security "$app_name"
-        done <<< "$app_names"
+        if [[ "$apps_count" -gt 0 ]]; then
+            print_info "Found $apps_count app(s) in plan: ${plan_id##*/}"
+        fi
+        
+        # Process each app with its resource group
+        echo "$apps_json" | jq -c '.[]' | while read -r app; do
+            local app_name
+            local app_rg
+            app_name=$(echo "$app" | jq -r '.name')
+            app_rg=$(echo "$app" | jq -r '.resourceGroup')
+            
+            test_web_app_security "$app_name" "$app_rg"
+        done
     done <<< "$plan_ids"
 }
 
 test_web_app_security() {
     local app_name="$1"
+    local app_rg="$2"
     
     local app_json
     app_json=$(az webapp show \
         --name "$app_name" \
-        --resource-group "$RESOURCE_GROUP" \
+        --resource-group "$app_rg" \
         2>/dev/null || echo "")
     
     if [[ -z "$app_json" ]]; then
@@ -507,7 +520,7 @@ test_web_app_security() {
     local app_settings
     app_settings=$(az webapp config appsettings list \
         --name "$app_name" \
-        --resource-group "$RESOURCE_GROUP" \
+        --resource-group "$app_rg" \
         2>/dev/null || echo "[]")
     
     local kv_ref_count
