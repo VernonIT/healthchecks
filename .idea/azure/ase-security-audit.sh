@@ -17,6 +17,9 @@
 
 set -euo pipefail
 
+# Enable debug mode with -d flag
+DEBUG=false
+
 # Default values
 OUTPUT_PATH="./ASE-Security-Report.html"
 RESOURCE_GROUP=""
@@ -59,9 +62,15 @@ print_info() {
     echo -e "${GRAY}$1${NC}"
 }
 
+print_debug() {
+    if [[ "$DEBUG" == "true" ]]; then
+        echo -e "${GRAY}[DEBUG] $1${NC}"
+    fi
+}
+
 usage() {
     cat << EOF
-Usage: $0 -g <resource-group> -n <ase-name> [-o <output-path>]
+Usage: $0 -g <resource-group> -n <ase-name> [-o <output-path>] [-d]
 
 Required:
     -g    Resource group name containing the ASE
@@ -69,6 +78,7 @@ Required:
 
 Optional:
     -o    Output path for HTML report (default: ./ASE-Security-Report.html)
+    -d    Enable debug mode (verbose output)
     -h    Show this help message
 
 Example:
@@ -185,9 +195,13 @@ get_ase_config() {
 test_network_isolation() {
     print_header "=== Network Isolation Checks ==="
     
+    print_debug "Checking Internal Load Balancer mode..."
+    
     # Check Internal Load Balancer mode
     local ilb_mode
     ilb_mode=$(echo "$ASE_JSON" | jq -r '.properties.internalLoadBalancingMode // "None"')
+    
+    print_debug "ILB Mode: $ilb_mode"
     
     if [[ "$ilb_mode" == "Web" ]] || [[ "$ilb_mode" == "Web, Publishing" ]]; then
         add_check_result "Network Isolation" "Internal Load Balancer (ILB)" \
@@ -198,11 +212,15 @@ test_network_isolation() {
             "Configure ASE with Internal Load Balancer for maximum security"
     fi
     
+    print_debug "Checking VNet integration..."
+    
     # Check VNet integration
     local vnet_id
     vnet_id=$(echo "$ASE_JSON" | jq -r '.properties.virtualNetwork.id // ""')
     
-    if [[ -n "$vnet_id" ]]; then
+    print_debug "VNet ID: $vnet_id"
+    
+    if [[ -n "$vnet_id" && "$vnet_id" != "null" ]]; then
         add_check_result "Network Isolation" "VNet Integration" \
             "Pass" "ASE is deployed in VNet: ${vnet_id##*/}"
         
@@ -217,17 +235,33 @@ test_network_isolation() {
 test_vnet_configuration() {
     local vnet_id="$1"
     
-    # Extract VNet resource group and name
+    # Validate vnet_id is not empty or null
+    if [[ -z "$vnet_id" || "$vnet_id" == "null" ]]; then
+        return
+    fi
+    
+    # Extract VNet resource group and name - handle different ID formats
     local vnet_rg
     local vnet_name
+    
+    # VNet ID format: /subscriptions/{sub}/resourceGroups/{rg}/providers/Microsoft.Network/virtualNetworks/{name}
     vnet_rg=$(echo "$vnet_id" | cut -d'/' -f5)
     vnet_name=$(echo "$vnet_id" | cut -d'/' -f9)
     
-    # Get subnet ID
-    local subnet_id
-    subnet_id=$(echo "$ASE_JSON" | jq -r '.properties.virtualNetwork.subnet.id // ""')
+    # Validate extracted values
+    if [[ -z "$vnet_rg" || -z "$vnet_name" || "$vnet_rg" == "null" || "$vnet_name" == "null" ]]; then
+        add_check_result "Network Isolation" "VNet Configuration" \
+            "Warning" "Could not parse VNet ID: $vnet_id"
+        return
+    fi
     
-    if [[ -z "$subnet_id" ]]; then
+    # Get subnet ID - handle both old and new ASE JSON structures
+    local subnet_id
+    subnet_id=$(echo "$ASE_JSON" | jq -r '.properties.virtualNetwork.subnet.id // .properties.virtualNetwork.subnetResourceId // ""')
+    
+    if [[ -z "$subnet_id" || "$subnet_id" == "null" ]]; then
+        add_check_result "Network Isolation" "Subnet Configuration" \
+            "Warning" "Could not determine ASE subnet"
         return
     fi
     
@@ -862,11 +896,12 @@ EOF
 
 main() {
     # Parse command line arguments
-    while getopts "g:n:o:h" opt; do
+    while getopts "g:n:o:dh" opt; do
         case $opt in
             g) RESOURCE_GROUP="$OPTARG" ;;
             n) ASE_NAME="$OPTARG" ;;
             o) OUTPUT_PATH="$OPTARG" ;;
+            d) DEBUG=true ;;
             h) usage ;;
             \?) usage ;;
         esac
@@ -936,4 +971,7 @@ EOF
 
 # Run main function
 main "$@"
+#===============================================================================
+# End of Script v11.0
+#===============================================================================
         
