@@ -939,7 +939,7 @@ main() {
     fi
     
     # Print banner with version number
-    SCRIPT_VERSION="v12.1"
+    SCRIPT_VERSION="v12.2"
     cat << EOF
 ╔═══════════════════════════════════════════════════════════════╗
 ║   Azure App Service Environment Security Assessment Script    ║
@@ -1000,5 +1000,5 @@ EOF
 # Run main function
 main "$@"
 #===============================================================================
-# End of Script v12.1
+# End of Script v12.2
 #===============================================================================
