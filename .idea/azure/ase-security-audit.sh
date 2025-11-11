@@ -368,11 +368,14 @@ test_web_apps() {
     print_info "Found $plans_count App Service Plan(s) in ASE"
     
     # Iterate through plans and get web apps
-    local plan_ids
-    plan_ids=$(echo "$plans_json" | jq -r '.[].id')
+    local plan_count
+    plan_count=$(echo "$plans_json" | jq 'length')
     
-    while IFS= read -r plan_id; do
-        [[ -z "$plan_id" ]] && continue
+    for ((i=0; i<plan_count; i++)); do
+        local plan_id
+        plan_id=$(echo "$plans_json" | jq -r ".[$i].id")
+        
+        [[ -z "$plan_id" || "$plan_id" == "null" ]] && continue
         
         # Get web apps for this plan (searches all resource groups)
         local apps_json
@@ -383,18 +386,21 @@ test_web_apps() {
         
         if [[ "$apps_count" -gt 0 ]]; then
             print_info "Found $apps_count app(s) in plan: ${plan_id##*/}"
-        fi
-        
-        # Process each app with its resource group
-        echo "$apps_json" | jq -c '.[]' | while read -r app; do
-            local app_name
-            local app_rg
-            app_name=$(echo "$app" | jq -r '.name')
-            app_rg=$(echo "$app" | jq -r '.resourceGroup')
             
-            test_web_app_security "$app_name" "$app_rg"
-        done
-    done <<< "$plan_ids"
+            # Process each app with its resource group
+            for ((j=0; j<apps_count; j++)); do
+                local app_name
+                local app_rg
+                app_name=$(echo "$apps_json" | jq -r ".[$j].name")
+                app_rg=$(echo "$apps_json" | jq -r ".[$j].resourceGroup")
+                
+                [[ -z "$app_name" || "$app_name" == "null" ]] && continue
+                [[ -z "$app_rg" || "$app_rg" == "null" ]] && continue
+                
+                test_web_app_security "$app_name" "$app_rg"
+            done
+        fi
+    done
 }
 
 test_web_app_security() {
