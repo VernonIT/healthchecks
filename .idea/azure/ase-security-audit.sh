@@ -282,9 +282,9 @@ test_vnet_configuration() {
         --name "$subnet_name" \
         2>/dev/null || echo "")
 
-    # Validate subnet_json is valid JSON
+    # Validate subnet_json is valid JSON before using jq
     if ! echo "$subnet_json" | jq empty 2>/dev/null; then
-        print_warning "Subnet details output is not valid JSON. Output: $subnet_json"
+        print_warning "Subnet details output is not valid JSON. Skipping subnet/NSG checks. Output: $subnet_json"
         return
     fi
 
@@ -926,7 +926,7 @@ main() {
     fi
     
     # Print banner with version number
-    SCRIPT_VERSION="v11.0"
+    SCRIPT_VERSION="v12.1"
     cat << EOF
 ╔═══════════════════════════════════════════════════════════════╗
 ║   Azure App Service Environment Security Assessment Script    ║
@@ -987,5 +987,5 @@ EOF
 # Run main function
 main "$@"
 #===============================================================================
-# End of Script v11.0
+# End of Script v12.1
 #===============================================================================
