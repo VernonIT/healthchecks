@@ -263,14 +263,21 @@ test_vnet_configuration() {
     
     # Get subnet ID - handle both old and new ASE JSON structures
     local subnet_id
-    subnet_id=$(echo "$ASE_JSON" | jq -r '.properties.virtualNetwork.subnet.id // .properties.virtualNetwork.subnetResourceId // ""')
-    
+    subnet_id=""
+    # Check if .properties.virtualNetwork.subnet is an object and has .id
+    if echo "$ASE_JSON" | jq -e '.properties.virtualNetwork.subnet | type == "object"' >/dev/null 2>&1; then
+        subnet_id=$(echo "$ASE_JSON" | jq -r '.properties.virtualNetwork.subnet.id // ""')
+    # Otherwise, check if .properties.virtualNetwork.subnetResourceId exists and is a string
+    elif echo "$ASE_JSON" | jq -e '.properties.virtualNetwork.subnetResourceId | type == "string"' >/dev/null 2>&1; then
+        subnet_id=$(echo "$ASE_JSON" | jq -r '.properties.virtualNetwork.subnetResourceId // ""')
+    fi
+
     if [[ -z "$subnet_id" || "$subnet_id" == "null" ]]; then
         add_check_result "Network Isolation" "Subnet Configuration" \
             "Warning" "Could not determine ASE subnet"
         return
     fi
-    
+
     local subnet_name
     subnet_name=$(echo "$subnet_id" | cut -d'/' -f11)
     
@@ -939,7 +946,7 @@ main() {
     fi
     
     # Print banner with version number
-    SCRIPT_VERSION="v12.2"
+    SCRIPT_VERSION="v12.3"
     cat << EOF
 ╔═══════════════════════════════════════════════════════════════╗
 ║   Azure App Service Environment Security Assessment Script    ║
@@ -1000,5 +1007,5 @@ EOF
 # Run main function
 main "$@"
 #===============================================================================
-# End of Script v12.2
+# End of Script v12.3
 #===============================================================================
