@@ -169,21 +169,27 @@ get_ase_config() {
         --name "$ASE_NAME" \
         --resource-type "Microsoft.Web/hostingEnvironments" \
         2>/dev/null || echo "")
-    
+
+    # Validate ASE_JSON is valid JSON
+    if ! echo "$ASE_JSON" | jq empty 2>/dev/null; then
+        print_error "ASE resource output is not valid JSON. Output: $ASE_JSON"
+        exit 1
+    fi
+
     if [[ -z "$ASE_JSON" ]]; then
         print_error "ASE '$ASE_NAME' not found in resource group '$RESOURCE_GROUP'"
         exit 1
     fi
-    
+
     local ase_location
     local ase_kind
     ase_location=$(echo "$ASE_JSON" | jq -r '.location')
     ase_kind=$(echo "$ASE_JSON" | jq -r '.kind // "Not specified"')
-    
+
     print_success "Found ASE: $ASE_NAME"
     print_info "Location: $ase_location"
     print_info "Kind: $ase_kind"
-    
+
     # Store ASE ID for later use
     ASE_ID=$(echo "$ASE_JSON" | jq -r '.id')
 }
@@ -275,25 +281,31 @@ test_vnet_configuration() {
         --vnet-name "$vnet_name" \
         --name "$subnet_name" \
         2>/dev/null || echo "")
-    
+
+    # Validate subnet_json is valid JSON
+    if ! echo "$subnet_json" | jq empty 2>/dev/null; then
+        print_warning "Subnet details output is not valid JSON. Output: $subnet_json"
+        return
+    fi
+
     if [[ -n "$subnet_json" ]]; then
         local address_prefix
         address_prefix=$(echo "$subnet_json" | jq -r '.addressPrefix')
-        
+
         add_check_result "Network Isolation" "Subnet Configuration" \
             "Info" "ASE subnet: $address_prefix"
-        
+
         # Check for NSG
         local nsg_id
         nsg_id=$(echo "$subnet_json" | jq -r '.networkSecurityGroup.id // ""')
-        
+
         if [[ -n "$nsg_id" ]]; then
             local nsg_name
             nsg_name=$(echo "$nsg_id" | cut -d'/' -f9)
-            
+
             add_check_result "Network Isolation" "Network Security Group" \
                 "Pass" "NSG configured: $nsg_name"
-            
+
             test_nsg_rules "$nsg_id"
         else
             add_check_result "Network Isolation" "Network Security Group" \
@@ -913,10 +925,13 @@ main() {
         usage
     fi
     
-    # Print banner
-    cat << 'EOF'
+    # Print banner with version number
+    SCRIPT_VERSION="v11.0"
+    cat << EOF
 ╔═══════════════════════════════════════════════════════════════╗
 ║   Azure App Service Environment Security Assessment Script    ║
+║                                                               ║
+║   Version: $SCRIPT_VERSION                                    ║
 ║                                                               ║
 ║   This script validates your ASE configuration against        ║
 ║   security best practices for highly secure environments     ║
@@ -974,4 +989,3 @@ main "$@"
 #===============================================================================
 # End of Script v11.0
 #===============================================================================
-        
